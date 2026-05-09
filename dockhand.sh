@@ -5,55 +5,74 @@
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://dockhand.pro/ | Github: https://github.com/Finsys/dockhand
 
-# Formatting — must be defined before sourcing core.func
-TAB="  "
-CL="\033[m"
+set -Eeuo pipefail
+
+# ==============================================================================
+# COLOURS & HELPERS
+# ==============================================================================
+YW="\033[33m"
 GN="\033[1;92m"
 RD="\033[01;31m"
-YW="\033[33m"
-BL="\033[36m"
-BGN="\033[4;92m"
-CREATING="\033[1;96m"
-INFO="\033[1;34mℹ\033[m"
-GATEWAY="\033[1;94m🌐\033[m"
+CL="\033[m"
+BLD="\033[1m"
+TAB="  "
 
-source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/core.func)
-source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/error_handler.func)
+msg_info()  { echo -e "${TAB}\033[1;34mℹ\033[m  ${1}..."; }
+msg_ok()    { echo -e "${TAB}\033[1;92m✔\033[m  ${1}"; }
+msg_warn()  { echo -e "${TAB}\033[33m⚠\033[m  ${1}"; }
+msg_error() { echo -e "${TAB}\033[01;31m✖\033[m  ${1}"; exit 1; }
 
-set -Eeuo pipefail
-trap 'error_handler' ERR
+header_info() {
+  clear
+  cat <<'EOF'
 
+    ____             __  __                    __
+   / __ \____  _____/ /_/ /_  ____ _____  ____/ /
+  / / / / __ \/ ___/ //_/ _ \/ __ `/ __ \/ __  /
+ / /_/ / /_/ / /__/ ,< /  __/ /_/ / / / / /_/ /
+/_____/\____/\___/_/|_|\___/\__,_/_/ /_/\__,_/
+
+EOF
+}
+
+# ==============================================================================
+# CONFIG
+# ==============================================================================
 APP="Dockhand"
 PORT=3000
-
-header_info "$APP"
-
-# ==============================================================================
-# DEFAULTS
-# ==============================================================================
-CTID=$(pvesh get /cluster/nextid)
 HN="dockhand"
 DISK=8
 CORES=2
 RAM=2048
 BRG="vmbr0"
 
-TEMPLATE_STORAGE=$(pvesm status -content vztmpl | awk 'NR>1{print $1}' | head -n1)
-CONTAINER_STORAGE=$(pvesm status -content rootdir | awk 'NR>1{print $1}' | head -n1)
+header_info
 
+# ==============================================================================
+# DETECT STORAGE
+# ==============================================================================
+TEMPLATE_STORAGE=$(pvesm status -content vztmpl 2>/dev/null | awk 'NR>1{print $1}' | head -n1)
+CONTAINER_STORAGE=$(pvesm status -content rootdir 2>/dev/null | awk 'NR>1{print $1}' | head -n1)
+
+[[ -z "$TEMPLATE_STORAGE" ]]  && msg_error "No template storage found."
+[[ -z "$CONTAINER_STORAGE" ]] && msg_error "No container storage found."
+
+CTID=$(pvesh get /cluster/nextid 2>/dev/null)
+
+# ==============================================================================
+# CONFIRM
+# ==============================================================================
+echo -e "${BLD}⚙️  Default Settings:${CL}"
+echo -e "${TAB}Container ID:  ${GN}${CTID}${CL}"
+echo -e "${TAB}Hostname:      ${GN}${HN}${CL}"
+echo -e "${TAB}OS:            ${GN}Debian 12${CL}"
+echo -e "${TAB}Disk:          ${GN}${DISK}GB (${CONTAINER_STORAGE})${CL}"
+echo -e "${TAB}CPU Cores:     ${GN}${CORES}${CL}"
+echo -e "${TAB}RAM:           ${GN}${RAM}MiB${CL}"
+echo -e "${TAB}Bridge:        ${GN}${BRG}${CL}"
+echo -e "${TAB}Port:          ${GN}${PORT}${CL}"
 echo ""
-echo -e "⚙️  Default Settings:"
-echo -e "${TAB}Container ID:    ${CTID}"
-echo -e "${TAB}Hostname:        ${HN}"
-echo -e "${TAB}OS:              Debian 12"
-echo -e "${TAB}Disk:            ${DISK}GB  (${CONTAINER_STORAGE})"
-echo -e "${TAB}CPU Cores:       ${CORES}"
-echo -e "${TAB}RAM:             ${RAM}MiB"
-echo -e "${TAB}Network:         DHCP on ${BRG}"
-echo -e "${TAB}Port:            ${PORT}"
-echo ""
-echo -n "${TAB}Proceed with defaults? (y/N): "
-read -r confirm
+read -rp "${TAB}Proceed with defaults? (y/N): " confirm
 [[ ! "${confirm,,}" =~ ^(y|yes)$ ]] && { msg_warn "Aborted."; exit 0; }
 
 # ==============================================================================
@@ -61,9 +80,11 @@ read -r confirm
 # ==============================================================================
 msg_info "Updating template list"
 pveam update >/dev/null 2>&1
-TEMPLATE=$(pveam available --section system | awk '/debian-12-standard/{print $2}' | sort -V | tail -n1)
+TEMPLATE=$(pveam available --section system 2>/dev/null | awk '/debian-12-standard/{print $2}' | sort -V | tail -n1)
+[[ -z "$TEMPLATE" ]] && msg_error "Could not find Debian 12 template."
+
 if ! pveam list "$TEMPLATE_STORAGE" 2>/dev/null | grep -q "$TEMPLATE"; then
-  msg_info "Downloading Debian 12 template"
+  msg_info "Downloading ${TEMPLATE}"
   pveam download "$TEMPLATE_STORAGE" "$TEMPLATE" >/dev/null 2>&1
 fi
 msg_ok "Template ready: ${TEMPLATE}"
@@ -71,7 +92,7 @@ msg_ok "Template ready: ${TEMPLATE}"
 # ==============================================================================
 # CREATE LXC
 # ==============================================================================
-msg_info "Creating LXC container (${CTID})"
+msg_info "Creating LXC container ${CTID}"
 pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE}" \
   --hostname "$HN" \
   --cores "$CORES" \
@@ -82,7 +103,7 @@ pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE}" \
   --features "nesting=1" \
   --onboot 1 \
   --start 0 >/dev/null 2>&1
-msg_ok "Created LXC container (${CTID})"
+msg_ok "Created LXC container ${CTID}"
 
 msg_info "Starting container"
 pct start "$CTID"
@@ -110,7 +131,7 @@ msg_ok "Installed Docker"
 msg_info "Installing ${APP}"
 pct exec "$CTID" -- bash -c "
   mkdir -p /opt/dockhand/data
-  cat > /opt/dockhand/docker-compose.yaml << 'EOF'
+  cat > /opt/dockhand/docker-compose.yaml << 'COMPOSE'
 services:
   dockhand:
     image: fnsys/dockhand:latest
@@ -121,7 +142,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /opt/dockhand/data:/app/data
-EOF
+COMPOSE
   cd /opt/dockhand
   docker compose up -d
 "
@@ -130,7 +151,9 @@ msg_ok "Installed ${APP}"
 # ==============================================================================
 # DONE
 # ==============================================================================
-msg_ok "Completed Successfully!\n"
-echo -e "${CREATING}${GN}${APP} setup has been successfully initialized!${CL}"
-echo -e "${INFO}${YW} Access it using the following URL:${CL}"
-echo -e "${TAB}${GATEWAY}${BGN}http://${IP}:${PORT}${CL}"
+echo ""
+msg_ok "Completed successfully!"
+echo ""
+echo -e "${TAB}${GN}${BLD}${APP} is ready!${CL}"
+echo -e "${TAB}Access: ${GN}http://${IP}:${PORT}${CL}"
+echo ""
