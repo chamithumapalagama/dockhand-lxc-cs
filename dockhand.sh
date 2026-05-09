@@ -8,6 +8,18 @@
 source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/core.func)
 source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/error_handler.func)
 
+# Formatting variables (normally from build.func)
+TAB="  "
+CL="\033[m"
+GN="\033[1;92m"
+RD="\033[01;31m"
+YW="\033[33m"
+BL="\033[36m"
+BGN="\033[4;92m"
+CREATING="\033[1;96m"
+INFO="\033[1;34mℹ\033[m"
+GATEWAY="\033[1;94m🌐\033[m"
+
 set -Eeuo pipefail
 trap 'error_handler' ERR
 
