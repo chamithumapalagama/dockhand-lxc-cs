@@ -20,6 +20,7 @@ header_info "$APP"
 
 base_settings() {
   CT_ID=$NEXTID
+  CT_TYPE="1"
   HN=$NSAPP
   DISK_SIZE="$var_disk"
   CORE_COUNT="$var_cpu"
