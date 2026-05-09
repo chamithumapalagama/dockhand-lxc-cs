@@ -7,9 +7,6 @@
 
 set -Eeuo pipefail
 
-# ==============================================================================
-# COLOURS & HELPERS
-# ==============================================================================
 YW="\033[33m"
 GN="\033[1;92m"
 RD="\033[01;31m"
@@ -35,9 +32,6 @@ header_info() {
 EOF
 }
 
-# ==============================================================================
-# CONFIG
-# ==============================================================================
 APP="Dockhand"
 PORT=3000
 HN="dockhand"
@@ -48,9 +42,6 @@ BRG="vmbr0"
 
 header_info
 
-# ==============================================================================
-# DETECT STORAGE
-# ==============================================================================
 TEMPLATE_STORAGE=$(pvesm status -content vztmpl 2>/dev/null | awk 'NR>1{print $1}' | head -n1)
 CONTAINER_STORAGE=$(pvesm status -content rootdir 2>/dev/null | awk 'NR>1{print $1}' | head -n1)
 
@@ -59,9 +50,6 @@ CONTAINER_STORAGE=$(pvesm status -content rootdir 2>/dev/null | awk 'NR>1{print 
 
 CTID=$(pvesh get /cluster/nextid 2>/dev/null)
 
-# ==============================================================================
-# CONFIRM
-# ==============================================================================
 echo -e "${BLD}⚙️  Default Settings:${CL}"
 echo -e "${TAB}Container ID:  ${GN}${CTID}${CL}"
 echo -e "${TAB}Hostname:      ${GN}${HN}${CL}"
@@ -75,9 +63,6 @@ echo ""
 read -rp "${TAB}Proceed with defaults? (y/N): " confirm
 [[ ! "${confirm,,}" =~ ^(y|yes)$ ]] && { msg_warn "Aborted."; exit 0; }
 
-# ==============================================================================
-# TEMPLATE
-# ==============================================================================
 msg_info "Updating template list"
 pveam update >/dev/null 2>&1
 TEMPLATE=$(pveam available --section system 2>/dev/null | awk '/debian-12-standard/{print $2}' | sort -V | tail -n1)
@@ -89,9 +74,6 @@ if ! pveam list "$TEMPLATE_STORAGE" 2>/dev/null | grep -q "$TEMPLATE"; then
 fi
 msg_ok "Template ready: ${TEMPLATE}"
 
-# ==============================================================================
-# CREATE LXC
-# ==============================================================================
 msg_info "Creating LXC container ${CTID}"
 pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE}" \
   --hostname "$HN" \
@@ -100,21 +82,22 @@ pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE}" \
   --rootfs "${CONTAINER_STORAGE}:${DISK}" \
   --net0 "name=eth0,bridge=${BRG},ip=dhcp" \
   --unprivileged 1 \
-  --features "nesting=1" \
+  --features "nesting=1,keyctl=1" \
   --onboot 1 \
   --start 0 >/dev/null 2>&1
 msg_ok "Created LXC container ${CTID}"
 
 msg_info "Starting container"
 pct start "$CTID"
-sleep 8
+
+msg_info "Waiting for IP allocation"
+IP=""
+while [ -z "$IP" ]; do
+  sleep 2
+  IP=$(pct exec "$CTID" -- ip -4 addr show eth0 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1 || true)
+done
 msg_ok "Container started"
 
-IP=$(pct exec "$CTID" -- ip -4 addr show eth0 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1)
-
-# ==============================================================================
-# INSTALL DOCKER
-# ==============================================================================
 msg_info "Installing Docker"
 pct exec "$CTID" -- bash -c "
   apt-get update -qq >/dev/null 2>&1
@@ -125,9 +108,6 @@ pct exec "$CTID" -- bash -c "
 "
 msg_ok "Installed Docker"
 
-# ==============================================================================
-# INSTALL DOCKHAND
-# ==============================================================================
 msg_info "Installing ${APP}"
 pct exec "$CTID" -- bash -c "
   mkdir -p /opt/dockhand/data
@@ -148,9 +128,6 @@ COMPOSE
 "
 msg_ok "Installed ${APP}"
 
-# ==============================================================================
-# DONE
-# ==============================================================================
 echo ""
 msg_ok "Completed successfully!"
 echo ""
