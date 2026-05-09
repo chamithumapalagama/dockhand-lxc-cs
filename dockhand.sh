@@ -5,10 +5,7 @@
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://dockhand.pro/ | Github: https://github.com/Finsys/dockhand
 
-source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/core.func)
-source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/error_handler.func)
-
-# Formatting variables (normally from build.func)
+# Formatting — must be defined before sourcing core.func
 TAB="  "
 CL="\033[m"
 GN="\033[1;92m"
@@ -19,6 +16,9 @@ BGN="\033[4;92m"
 CREATING="\033[1;96m"
 INFO="\033[1;34mℹ\033[m"
 GATEWAY="\033[1;94m🌐\033[m"
+
+source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/core.func)
+source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/error_handler.func)
 
 set -Eeuo pipefail
 trap 'error_handler' ERR
