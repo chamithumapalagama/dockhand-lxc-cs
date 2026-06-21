@@ -114,6 +114,17 @@ pct exec "$CTID" -- bash -c "
 "
 msg_ok "Fetched install.sh"
 
+msg_info "Patching install.sh for LXC quirks"
+pct exec "$CTID" -- bash -c "
+  # Exclude phantom 'bonding_masters' pseudo-interface from /sys/class/net
+  # (kernel bonding driver loaded on host leaks this into the LXC's /sys,
+  # which breaks the script's single-interface auto-detect and certificate gen)
+  sed -i 's/\[\[ \$value != lo \]\] \&\& \[\[ \$value != docker0 \]\]/[[ \$value != lo ]] \&\& [[ \$value != docker0 ]] \&\& [[ \$value != bonding_masters ]]/' /root/install.sh
+  # Silence the externally-managed-environment warning on pip self-upgrade
+  sed -i 's/python3 -m pip install --upgrade pip/python3 -m pip install --upgrade pip --break-system-packages/' /root/install.sh
+"
+msg_ok "Patched install.sh"
+
 msg_info "Installing ${APP} (this can take a few minutes)"
 # install.sh prompts:
 #   1) Branch selection (1=Master, 2=Dev) -> auto-answered via echo
